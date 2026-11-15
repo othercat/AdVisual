@@ -42,10 +42,15 @@ def resources(args, root: Path, windows: bool) -> list[Path]:
         shutil.copy2(args.source / filename, data / filename)
     shutil.copy2(args.source / "packaging/dependency-sources.json", data / "dependency-sources.json")
     shutil.copy2(args.source / "packaging/LICENSES-SOURCES.txt", root / "LICENSES-SOURCES.txt")
-    commit = run("git", "-C", args.source, "rev-parse", "HEAD").strip()
-    dirty = bool(run("git", "-C", args.source, "status", "--porcelain", "--untracked-files=no").strip())
+    if (args.source / ".git").exists():
+        commit = run("git", "-C", args.source, "rev-parse", "HEAD").strip()
+        dirty = "yes" if run("git", "-C", args.source, "status", "--porcelain", "--untracked-files=no").strip() else "no"
+    else:
+        stamp = args.source / "SOURCE-COMMIT.txt"
+        commit = stamp.read_text(encoding="utf-8").splitlines()[0] if stamp.is_file() else "unavailable (source archive)"
+        dirty = "unavailable (source archive)"
     (root / "SOURCE-COMMIT.txt").write_text(commit + "\nRepository: https://github.com/othercat/AdVisual\nTracked working tree changes: " +
-        ("yes" if dirty else "no") + "\n", encoding="ascii")
+        dirty + "\n", encoding="ascii")
     licenses = root / "share/licenses/AdVisual"
     licenses.mkdir(parents=True, exist_ok=True)
     shutil.copy2(args.source / "LICENSE.txt", licenses / "LICENSE.txt")
