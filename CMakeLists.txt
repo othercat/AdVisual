@@ -12,6 +12,12 @@ project(advisual LANGUAGES C CXX VERSION 1.1.0 HOMEPAGE_URL "https://github.com/
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTKMM REQUIRED IMPORTED_TARGET gtkmm-4.0)
+# pkg-config's CPU/compiler flags do not apply to the Windows resource compiler.
+get_target_property(gtkmm_compile_options PkgConfig::GTKMM INTERFACE_COMPILE_OPTIONS)
+if(gtkmm_compile_options)
+    set_property(TARGET PkgConfig::GTKMM PROPERTY INTERFACE_COMPILE_OPTIONS
+        "$<$<COMPILE_LANGUAGE:C,CXX>:${gtkmm_compile_options}>")
+endif()
 
 if (WIN32)
     enable_language(RC)
@@ -47,10 +53,6 @@ endif()
 target_link_libraries(advisual PRIVATE adplug::adplug)
 target_link_libraries(advisual PRIVATE libbinio::libbinio)
 
-# Include gtkmm-4.0
-link_directories(${GTKMM_LIBRARY_DIRS})
-include_directories(${GTKMM_INCLUDE_DIRS})
-add_definitions(${GTKMM_CFLAGS_OTHER})
 target_link_libraries(advisual PRIVATE PkgConfig::GTKMM)
 
 if(APPLE OR WIN32)
@@ -72,8 +74,8 @@ function(advisual_build_settings target)
     endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(${target} PRIVATE
-            "-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=."
-            "-ffile-prefix-map=${CMAKE_CURRENT_BINARY_DIR}=build")
+            "$<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.>"
+            "$<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_CURRENT_BINARY_DIR}=build>")
     endif()
 endfunction()
 advisual_build_settings(advisual)
