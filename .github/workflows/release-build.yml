@@ -94,14 +94,34 @@ jobs:
           deps_prefix="$(cygpath -m "$PWD/build/deps")"
           cmake -S build/_sources/libbinio -B build/libbinio -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps_prefix" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
             -DBUILD_SHARED_LIBS=ON -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON
           cmake --build build/libbinio --target install --parallel 3
           cmake -S build/_sources/adplug -B build/adplug -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps_prefix" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
             -DCMAKE_PREFIX_PATH="$deps_prefix" -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON -DADPLUG_PRECOMPILED_HEADERS=OFF \
             -Dadplug_INCLUDE_TEST=OFF
           cmake --build build/adplug --target install --parallel 3
+          python - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+          for project in ['adplug', 'libbinio']:
+              commands = subprocess.check_output(['ninja', '-C', 'build/' + project, '-t', 'commands'], text=True)
+              assert '-flto' not in commands, project + ' unexpectedly uses LTO'
+              print('Verified non-LTO shared library:', project)
+          # LTO objects can be misclassified as DATA by PE auto-export. A DLL
+          # function must have a code thunk, not a 32-bit runtime data fixup.
+          checks = [('libadplug.dll.a', '_ZN8CNemuoplC1Ei'),
+                    ('liblibbinio.dll.a', '_ZN10binistream7readIntEj')]
+          for filename, symbol in checks:
+              library = Path('build/deps/lib') / filename
+              symbols = subprocess.check_output(['nm', '--defined-only', str(library)], text=True)
+              assert re.search(r'(?m)\bT\s+' + re.escape(symbol) + r'\s*$', symbols), (filename, symbol)
+              print('Verified DLL function thunk:', symbol)
+          PY
       - name: Build PAL editor and package its complete Windows runtime
         run: |
           set -euo pipefail
@@ -132,6 +152,18 @@ jobs:
           if test -f build/portable/build.ninja; then
             ninja -C build/portable -t commands advisual > build/diagnostics/advisual.commands.txt
           fi
+          for project in adplug libbinio; do
+            if test -f "build/$project/build.ninja"; then
+              ninja -C "build/$project" -t commands > "build/diagnostics/$project.commands.txt"
+            fi
+          done
+          for library in build/deps/lib/*.dll.a; do
+            if test -f "$library"; then
+              name="$(basename "$library")"
+              cp "$library" "build/diagnostics/$name"
+              nm --defined-only "$library" > "build/diagnostics/$name.symbols.txt"
+            fi
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
