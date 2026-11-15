@@ -79,6 +79,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/_sources
           while IFS=$'\t' read -r name repository revision; do
+            revision="${revision%$'\r'}" # Native Windows Python emits CRLF.
             git init "build/_sources/$name"
             git -C "build/_sources/$name" remote add origin "$repository"
             git -C "build/_sources/$name" fetch --depth 1 origin "$revision"
