@@ -114,6 +114,31 @@ jobs:
             -DADVISUAL_DLL_DIRECTORIES="$deps_prefix/bin;$deps_prefix/lib" \
             -DPython3_EXECUTABLE="$(cygpath -m "$(command -v python)")"
           cmake --build build/portable --target check-portable --parallel 3
+      - name: Collect Windows diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p build/diagnostics
+          for binary in build/portable/advisual.exe build/portable/advisual_portable_check.exe; do
+            if test -f "$binary"; then
+              name="$(basename "$binary")"
+              cp "$binary" "build/diagnostics/$name"
+              objdump -p "$binary" > "build/diagnostics/$name.pe.txt"
+              objdump -t "$binary" > "build/diagnostics/$name.symbols.txt"
+            fi
+          done
+          if test -f build/portable/CMakeCache.txt; then
+            cp build/portable/CMakeCache.txt build/diagnostics/
+          fi
+          if test -f build/portable/build.ninja; then
+            ninja -C build/portable -t commands advisual > build/diagnostics/advisual.commands.txt
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: AdVisual-windows-diagnostics
+          path: build/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: AdVisual-v1.1.0-windows-x64
