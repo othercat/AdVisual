@@ -30,3 +30,7 @@ Release：待记录。
 本机证据：process-root/artifacts/AdVisual-issue-2；GitHub 记录见 Issue #1。
 
 CI 43737773439：Windows ZIP 与严格依赖闭包已成功生成，搬移检查的 plain dict 丢失 Windows 环境变量大小写查找语义，SystemRoot KeyError。已改为从原始 os.environ 取系统目录；实际搬移检查函数在模拟 Windows 大写键、可执行 probe fixture 下通过，同时复现旧 dict 失败。最终 main CI 将运行真实 Windows 便携包。
+
+## main 发布启动修复
+
+普通 merge：ab79bc3e5b6a596f4792b0b34f15a9ee9c2e30bb。CI 43738787645 的 macOS 包通过，Windows 严格闭包、ZIP 和实际 GTK 搬移 probe（28PNG/SVG/schema/font）通过；真实 advisual.exe 启动遇到32位 MinGW pseudo relocation越界。创建 main 基线修复分支 richardli/fix/2-windows-dll-relocations；MinGW x64 的 C/CXX 与链接启用 large code model，保留 ASLR/DEP。生成器验证x64 C/CXX/link均带flag、RC/x86无；Mac配置及真实目标构建通过。机制符合 GCC/ld 官方文档，但不把推断的具体外部符号当作已定位事实。最终实际Windows启动由后续main CI验证，新增失败二进制/PE/符号/构建命令诊断附件。证据：process-root/artifacts/AdVisual-issue-2/large-model。
