@@ -45,12 +45,18 @@ def resources(args, root: Path, windows: bool) -> list[Path]:
     if (args.source / ".git").exists():
         commit = run("git", "-C", args.source, "rev-parse", "HEAD").strip()
         dirty = "yes" if run("git", "-C", args.source, "status", "--porcelain", "--untracked-files=no").strip() else "no"
+        difference = subprocess.run(["git", "-C", str(args.source), "diff", "--quiet", "--ignore-cr-at-eol", "HEAD", "--"],
+            capture_output=True, text=True)
+        if difference.returncode not in (0, 1):
+            raise RuntimeError("Cannot verify source revision: " + difference.stderr.strip())
+        source_changes = "yes" if difference.returncode else "no"
     else:
         stamp = args.source / "SOURCE-COMMIT.txt"
         commit = stamp.read_text(encoding="utf-8").splitlines()[0] if stamp.is_file() else "unavailable (source archive)"
         dirty = "unavailable (source archive)"
+        source_changes = "unavailable (source archive)"
     (root / "SOURCE-COMMIT.txt").write_text(commit + "\nRepository: https://github.com/othercat/AdVisual\nTracked working tree changes: " +
-        dirty + "\n", encoding="ascii")
+        dirty + "\nTracked source changes beyond CRLF: " + source_changes + "\n", encoding="ascii")
     licenses = root / "share/licenses/AdVisual"
     licenses.mkdir(parents=True, exist_ok=True)
     shutil.copy2(args.source / "LICENSE.txt", licenses / "LICENSE.txt")
