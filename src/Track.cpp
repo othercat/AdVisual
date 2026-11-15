@@ -222,7 +222,7 @@ void Channel::set_volume_event(int at_tick, float value) {
 }
 
 // float get_last_float_event(int start_tick, map<int, void*>* event_map) {
-#define get_last_event(start_tick, event_map, ret_tick, ret_value) do { \
+#define get_last_event(start_tick, event_map, ret_tick, ret_value, fallback) do { \
 	for (auto it = event_map.rbegin(); it != event_map.rend(); it++) { \
 		if (it->first <= start_tick) { \
 			ret_tick = it->first; \
@@ -230,18 +230,18 @@ void Channel::set_volume_event(int at_tick, float value) {
 			return; \
 		} \
 	} \
-	ret_tick = event_map.rend()->first; \
-	ret_value = event_map.rend()->second; \
+	ret_tick = -1; \
+	ret_value = fallback; \
 } while(0)
 
 void Track::get_last_tempo_event(int start_tick, int& ret_tick, float& ret_value)
-		{ get_last_event(start_tick, tempo_events, ret_tick, ret_value); }
+		{ get_last_event(start_tick, tempo_events, ret_tick, ret_value, 1.0f); }
 void Channel::get_last_instrument_event(int start_tick, int& ret_tick, string& ret_value)
-		{ get_last_event(start_tick, instrument_events, ret_tick, ret_value); }
+		{ get_last_event(start_tick, instrument_events, ret_tick, ret_value, string()); }
 void Channel::get_last_pitch_event(int start_tick, int& ret_tick, float& ret_value)
-		{ get_last_event(start_tick, pitch_events, ret_tick, ret_value); }
+		{ get_last_event(start_tick, pitch_events, ret_tick, ret_value, 1.0f); }
 void Channel::get_last_volume_event(int start_tick, int& ret_tick, float& ret_value)
-		{ get_last_event(start_tick, volume_events, ret_tick, ret_value); }
+		{ get_last_event(start_tick, volume_events, ret_tick, ret_value, 1.0f); }
 
 Instrument* Channel::get_instrument_at_tick(int at_tick) {
 	string last_ins_val;
@@ -343,6 +343,7 @@ Note Channel::get_note_or_invalid(int at_idx) {
 }
 
 void Track::clear_track_data() {
+	minimum_tick_count = 0;
 	tempo_events.clear();
 	for (Channel& channel : channels) {
 		channel.clear_channel_data();
@@ -389,8 +390,9 @@ void Track::rol_move_fields() {
 	for (int voice_idx = 0; voice_idx < 11; voice_idx++) {
 		Channel& voice = *get_channel(voice_idx);
 		fieldzero(15); // filler.
-		uint16_t tick_count = voice.get_tick_count();
+		uint16_t tick_count = std::max(voice.get_tick_count(), minimum_tick_count);
 		fieldcpy_uint16(&tick_count, 2);
+		if (!writing) minimum_tick_count = std::max(minimum_tick_count, int(tick_count));
 		DBPRINT("process notes, " << tick_count << " ticks");
 		if (writing == true) {
 			uint16_t note_end = 0;
@@ -407,6 +409,11 @@ void Track::rol_move_fields() {
 				note_end = note.offset + note.length;
 				// DBPRINT("note_number " << note_number << ", duration " << note_length << ", tick " << note.offset);
 			}
+			if (note_end < tick_count) {
+                uint16_t rest = tick_count - note_end;
+                fieldzero(2);
+                fieldcpy_uint16(&rest, 2);
+            }
 		}
 		else {
 			uint16_t note_number = 0;

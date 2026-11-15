@@ -1,6 +1,8 @@
 #include <CommonWidgets.h>
 #include <Track.h>
 #include <common.h>
+#include <AdPlayer.h>
+#include <ComposerPanel.h>
 
 using namespace Gtk;
 
@@ -85,7 +87,9 @@ void ChannelButton::update_melodic_mode() {
 
 void ChannelButton::on_lmb_down(int n_press, double x, double y) {
 	if (bool(lmb_gesture->get_current_event_state() & Gdk::ModifierType::SHIFT_MASK)) {
-		enabled_channels[channel_index] = !enabled_channels[channel_index];
+		if (adplayer) adplayer->set_channel_enable(channel_index, !enabled_channels[channel_index]);
+		else enabled_channels[channel_index] = !enabled_channels[channel_index];
+		ComposerPanel::signal_channel_controls_changed.emit();
 		queue_draw();
 		return;
 	}

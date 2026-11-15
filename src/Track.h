@@ -119,7 +119,7 @@ struct Track {
 	void save_file(string filename);
 	void load_file(string filename);
 	int get_tick_count() const {
-		int highest_tick_count = 0;
+		int highest_tick_count = minimum_tick_count;
 		for (const Channel& channel : channels) {
 			if (channel.get_tick_count() > highest_tick_count) highest_tick_count = channel.get_tick_count();
 		}
@@ -129,6 +129,7 @@ struct Track {
 	uint16_t editor_scale_x = 1, editor_scale_y = 1;
 	uint8_t melodic_mode = 0; // 0 = percussive, 1 = melodic.
 	float basic_tempo = 120;
+    int minimum_tick_count = 0; // Keep imported/loaded trailing rests through save/reload.
 	// Every event, key == time of event in Ticks. for tempo_events, Value = Tempo multipler (0.01 - 10.0).
 	map<int, float> tempo_events = {{0, 1.0f}};
 	string file_path = "";

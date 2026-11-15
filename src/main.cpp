@@ -6,6 +6,10 @@
 #include <AdPlayer.h>
 #include <Util/HelpWindow.h>
 #include <Util/Settings.h>
+#include <RixImport.h>
+#include <FileAccess.h>
+#include <filesystem>
+#include <stdexcept>
 
 class MainWindow;
 
@@ -210,6 +214,11 @@ void Toolbar::create_composer_tools(shared_ptr<ComposerPanel> p_composer_panel) 
 using namespace Gtk;
 	composer_panel = p_composer_panel;
 	composer_toolbar.set_can_focus(false);
+	ToggleButton* overview = make_managed<ToggleButton>("All channels");
+	overview->set_action_name("composer.all_channels");
+	overview->set_can_focus(false);
+	overview->set_tooltip_text("Switch between the PAL arrangement and the single-channel piano editor");
+	composer_toolbar.append(*overview);
 	for (int i = 0; i < 11; i++) {
 		string channel_name = "CH" + to_string(i + 1);
 		ChannelButton* channel_button = make_managed<ChannelButton>(i);
@@ -276,6 +285,7 @@ protected:
 	void load_panel();
 	void save_panel();
 	void save_as();
+	void save_track_and_bank(const string& filename);
 	void on_select_file(bool loading_bank, bool saving);
 	void on_file_selected(const shared_ptr<Gio::AsyncResult>& result, const shared_ptr<Gtk::FileDialog>& dialog, bool saving);
 	bool on_close_request();
@@ -349,7 +359,7 @@ using namespace Gtk;
 	// Initialize.
 	set_name("mainframe");
 	set_title("AdVisual");
-	set_default_size(1024, 720);
+	set_default_size(1280, 780);
 	Box vertical_box = Box(Orientation::VERTICAL, 0);
 	set_child(vertical_box);
 
@@ -425,7 +435,9 @@ int main(int argc, char* argv[]) {
 using namespace Gtk;
 	AppSettings::initialize();
 	app = Application::create("com.github.advisual", Application::Flags::NON_UNIQUE);
-	return app->make_window_and_run<MainWindow>(argc, argv);
+	const int result = app->make_window_and_run<MainWindow>(argc, argv);
+	adplayer.reset();
+	return result;
 }
 
 void MainWindow::show_help() {
@@ -445,6 +457,8 @@ void MainWindow::show_settings() {
 void MainWindow::continue_playback() {
 	if (adplayer->is_playing()) { adplayer->stop(); }
 	else {
+		composer_panel->track_settings.hide();
+		if (insmaker_panel->get_visible()) open_panel(0);
 		if (cursor_tick >= ComposerPanel::selection_end() || cursor_tick < ComposerPanel::selection_start()) {
 			adplayer->play("", ComposerPanel::selection_start());
 		}
@@ -453,6 +467,8 @@ void MainWindow::continue_playback() {
 }
 
 void MainWindow::restart_playback() {
+	composer_panel->track_settings.hide();
+	if (insmaker_panel->get_visible()) open_panel(0);
 	adplayer->play("", ComposerPanel::selection_start());
 }
 
@@ -467,6 +483,7 @@ void MainWindow::open_panel(int p_panel) {
 		remove_action_group("insmaker");
 	}
 	if (p_panel == 1) {
+		if (adplayer) adplayer->stop();
 		insmaker_panel->show();
 		composer_panel->hide();
 		toolbar->insmaker_toolbar.show();
@@ -479,24 +496,35 @@ void MainWindow::open_panel(int p_panel) {
 
 void MainWindow::load() {
 	on_select_file(false, false);
-	on_select_file(true, false);
 }
 void MainWindow::save_as() {
+	adplayer->stop();
 	on_select_file(false, true);
-	on_select_file(true, true);
 }
 void MainWindow::save() {
+	adplayer->stop();
 	if (!current_track->file_path.empty()) {
-		current_track->save_file(current_track->file_path);
-		composer_panel->on_track_saved();
+		save_track_and_bank(current_track->file_path);
 	}
 	else { on_select_file(false, true); }
-
-	if (!current_bank->file_path.empty()) {
-		insmaker_panel->save_instruments();
-		current_bank->save_file(current_bank->file_path);
+}
+void MainWindow::save_track_and_bank(const string& filename) {
+	adplayer->stop();
+	current_track->save_file(filename);
+	if (FileAccess::ios_file.fail()) {
+		Gtk::AlertDialog::create("Could not save the ROL file. Your changes remain unsaved.")->show(*this);
+		return;
 	}
-	else { on_select_file(true, true); }
+	insmaker_panel->save_instruments();
+	auto bank_path = std::filesystem::path(filename);
+	bank_path.replace_extension(".BNK");
+	current_bank->save_file(bank_path.string());
+	if (FileAccess::ios_file.fail()) {
+		Gtk::AlertDialog::create("Could not save the companion BNK. Your changes remain unsaved.")->show(*this);
+		return;
+	}
+	composer_panel->on_track_saved();
+	status->set_text("Saved ROL and companion BNK: " + filename);
 }
 void MainWindow::load_panel() {
 	on_select_file(insmaker_panel->get_visible(), false);
@@ -511,12 +539,18 @@ using namespace Gtk;
 	shared_ptr<Gio::ListStore<FileFilter>> filters = Gio::ListStore<FileFilter>::create();
 
 	shared_ptr<Gtk::FileFilter> track_filter = FileFilter::create();
-	track_filter->set_name("Track files");
+	track_filter->set_name(saving ? "ROL track files" : "PAL RIX / ROL track files");
 	track_filter->add_pattern("*.ROL");
+	track_filter->add_pattern("*.rol");
+	if (!saving) {
+		track_filter->add_pattern("*.RIX");
+		track_filter->add_pattern("*.rix");
+	}
 
 	shared_ptr<Gtk::FileFilter> bank_filter = FileFilter::create();
 	bank_filter->set_name("Bank files");
 	bank_filter->add_pattern("*.BNK");
+	bank_filter->add_pattern("*.bnk");
 
 	filters->append(track_filter);
 	filters->append(bank_filter);
@@ -530,6 +564,7 @@ using namespace Gtk;
 		dialog->set_default_filter(track_filter);
 		dialog->set_accept_label(saving ? "Save Track" : "Load Track");
 	}
+	if (saving) dialog->set_initial_name(bank ? "PAL.BNK" : "PAL.ROL");
 	if (saving) { dialog->save(sigc::bind(mem_fun(*this, &MainWindow::on_file_selected), dialog, saving)); }
 	else { dialog->open(sigc::bind(mem_fun(*this, &MainWindow::on_file_selected), dialog, saving)); }
 }
@@ -539,11 +574,12 @@ using namespace Gtk;
 	try {
 		shared_ptr<Gio::File> file = (saving ? dialog->save_finish(result) : dialog->open_finish(result));
 		string filename = file->get_path();
+		adplayer->stop();
 
 		// Get file extension.
 		string file_ext;
 		int extension_pos = filename.rfind(".");
-		if (extension_pos == -1 && extension_pos != filename.length() - 1) {
+		if (extension_pos == -1 || extension_pos == filename.length() - 1) {
 			cerr << "Filename doesn't have a file extension\n";
 			return;
 		}
@@ -551,12 +587,24 @@ using namespace Gtk;
 		string_to_upper(file_ext);
 
 		// Compare file extension.
+		if (file_ext == "RIX" && !saving) {
+			RixImport::load_file(filename);
+			composer_panel->mark_import_unsaved();
+			composer_panel->set_arrangement_view(true);
+			open_panel(0);
+			status->set_text("Imported PAL RIX · Save as ROL + BNK · source RIX is preserved");
+		}
 		if (file_ext == "ROL") {
 			if (saving) {
-				current_track->save_file(filename);
-				composer_panel->on_track_saved();
+				save_track_and_bank(filename);
 			}
-			else  { current_track->load_file(filename); }
+			else {
+				auto bank_path = std::filesystem::path(filename);
+				bank_path.replace_extension(".BNK");
+				if (!std::filesystem::exists(bank_path)) bank_path.replace_extension(".bnk");
+				if (std::filesystem::exists(bank_path)) current_bank->load_file(bank_path.string());
+				current_track->load_file(filename);
+			}
 		}
 		if (file_ext == "BNK") {
 			if (saving) {
@@ -565,9 +613,15 @@ using namespace Gtk;
 			}
 			else { current_bank->load_file(filename); }
 		}
+		if (file_ext != "ROL" && file_ext != "BNK" && !(file_ext == "RIX" && !saving)) {
+			throw std::runtime_error("Choose a RIX/ROL file to load, or save editable music as ROL with a companion BNK.");
+		}
 	}
 	catch (const Gtk::DialogError& err) {
 		cout << "No file selected\n";
+	}
+	catch (const std::exception& err) {
+		Gtk::AlertDialog::create(err.what())->show(*this);
 	}
 }
 

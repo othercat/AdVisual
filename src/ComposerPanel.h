@@ -6,6 +6,7 @@
 #include <CommonWidgets.h>
 #include <Util/UndoComposer.h>
 #include <Util/MetaDataWindow.h>
+#include <ArrangementView.h>
 
 using namespace std;
 
@@ -23,6 +24,7 @@ protected:
 	void on_bank_ctrl_instrument_selected(Instrument* ins);
 	void init_spin_field(Gtk::Grid& grid, string text, int entry_idx, Gtk::Entry& entry);
 	int editing_tick = 0;
+	int editing_channel = -1;
 	Gtk::Entry tempo_field;
 	Gtk::Entry instrument_field;
 	Gtk::Entry pitch_field;
@@ -105,6 +107,11 @@ public:
 	//bool is_unsaved() { return (last_saved_undo_index == undo_index); }
 	bool is_unsaved();
 	void on_track_saved();
+	void mark_import_unsaved() { imported_unsaved = true; }
+	void set_arrangement_view(bool visible);
+	bool get_arrangement_view() const { return arrangement_view->get_visible(); }
+	ArrangementView& arrangement() { return *arrangement_view; }
+	static bool editing_allowed();
 	static UndoBuffer<UndoNotes*>* current_undo() { return &composer_undo[current_channel->channel_number]; }
 	// General.
 	static int selection_start() { return (selection1 < selection2 ? selection1 : selection2); }
@@ -112,6 +119,10 @@ public:
 	static int selection_length() { return (selection1 < selection2 ? selection2 - selection1 : selection1 - selection2); }
 	static bool has_selection() { return selection1 != selection2; }
 	static sigc::signal<void()> signal_cursor_moved;
+	static sigc::signal<void()> signal_content_changed;
+	static sigc::signal<void()> signal_playback_changed;
+	static sigc::signal<void()> signal_channel_controls_changed;
+	static sigc::signal<void()> signal_events_changed;
 	static void set_cursor_tick(int p_new_tick);
 protected:
 	// Signals.
@@ -122,6 +133,7 @@ protected:
 	bool on_mouse_scroll(double x, double y);
 	void on_track_changed();
 	void on_channel_changed();
+	void on_events_changed();
 	void update_piano_ctrl();
 	// Actions.
 	void cut();
@@ -136,6 +148,7 @@ protected:
 	static array<UndoBuffer<UndoNotes*>, 11> composer_undo;
 
 	bool insert_mode = false;
+	bool imported_unsaved = false;
 	int copy_buffer_start_tick = 0, copy_buffer_length = 0;
 	NoteGroup copy_buffer;
 
@@ -145,6 +158,7 @@ protected:
 	Gtk::Label* instrument_hint;
 	Gtk::Scrollbar* hscrollbar;
 	Gtk::Scrollbar* vscrollbar;
+	ArrangementView* arrangement_view;
 	shared_ptr<Gtk::EventControllerScroll> scroll_controller;
 
 	double zoom = 1.0;

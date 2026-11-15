@@ -15,6 +15,10 @@ static const vec2 default_cell_size = vec2(20.0, 20.0);
 static vec2 note_size;
 static vec2 cell_size;
 sigc::signal<void()> ComposerPanel::signal_cursor_moved;
+sigc::signal<void()> ComposerPanel::signal_content_changed;
+sigc::signal<void()> ComposerPanel::signal_playback_changed;
+sigc::signal<void()> ComposerPanel::signal_channel_controls_changed;
+sigc::signal<void()> ComposerPanel::signal_events_changed;
 array<UndoBuffer<UndoNotes*>, 11> ComposerPanel::composer_undo;
 
 ComposerPanel::ComposerPanel() {
@@ -53,6 +57,9 @@ ComposerPanel::ComposerPanel() {
 	vadjust->set_page_size(700 / cell_size.y);
 	attach(*hscrollbar, 0, 2, 3, 1);
 	attach(*vscrollbar, 2, 0, 1, 2);
+	arrangement_view = make_managed<ArrangementView>();
+	attach(*arrangement_view, 0, 0, 3, 3);
+	arrangement_view->signal_open_piano.connect([this] { set_arrangement_view(false); });
 
 	scroll_controller = EventControllerScroll::create();
 	scroll_controller->set_flags(EventControllerScroll::Flags::BOTH_AXES);
@@ -60,6 +67,7 @@ ComposerPanel::ComposerPanel() {
 	add_controller(scroll_controller);
 // Setup action group.
 	action_group = Gio::SimpleActionGroup::create();
+	action_group->add_action_bool("all_channels", [this] { set_arrangement_view(!get_arrangement_view()); }, true);
 	action_group->add_action_bool("toggle_insert_mode", mem_fun(*this, &ComposerPanel::toggle_insert_mode), false);
 	action_group->add_action("cut_selection", mem_fun(*this, &ComposerPanel::cut));
 	action_group->add_action("copy_selection", mem_fun(*this, &ComposerPanel::copy));
@@ -76,13 +84,38 @@ ComposerPanel::ComposerPanel() {
 	action_group->add_action("redo", mem_fun(*this, &ComposerPanel::redo));
 	action_group->add_action("show_track_settings", mem_fun(*this, &ComposerPanel::show_track_settings));
 	track_settings.signal_visible_change.connect(mem_fun(*grid_panel, &GridPanel::queue_draw));
+	track_settings.signal_visible_change.connect(mem_fun(*arrangement_view, &ArrangementView::refresh));
 	signal_track_changed.connect(mem_fun(*this, &ComposerPanel::on_track_changed));
 	signal_channel_changed.connect(mem_fun(*this, &ComposerPanel::on_channel_changed));
 	signal_bank_changed.connect(mem_fun(*this, &ComposerPanel::on_channel_changed));
+	signal_content_changed.connect(mem_fun(*event_header, &EventHeader::queue_draw));
+	signal_content_changed.connect(mem_fun(*grid_panel, &GridPanel::queue_draw));
+	signal_events_changed.connect(mem_fun(*this, &ComposerPanel::on_events_changed));
+	set_arrangement_view(true);
+}
+
+void ComposerPanel::set_arrangement_view(bool visible) {
+	for (Widget* widget : std::initializer_list<Widget*>{event_header, grid_panel, instrument_hint, piano_ctrl, hscrollbar, vscrollbar}) {
+		widget->set_visible(!visible);
+	}
+	arrangement_view->set_visible(visible);
+	if (action_group) action_group->change_action_state("all_channels", Glib::Variant<bool>::create(visible));
+	if (!visible) {
+		grid_panel->hadjust->set_value(cursor_tick);
+		grid_panel->update_grid();
+	}
+}
+
+bool ComposerPanel::editing_allowed() {
+	if (adplayer && adplayer->is_playing()) {
+		if (status) status->set_text("Pause playback to edit notes or events.");
+		return false;
+	}
+	return true;
 }
 
 void ComposerPanel::set_cursor_tick(int p_new_tick) {
-	cursor_tick = p_new_tick;
+	cursor_tick = std::clamp(p_new_tick, 0, 65535);
 	signal_cursor_moved.emit();
 }
 
@@ -93,6 +126,9 @@ void ComposerPanel::toggle_insert_mode() {
 }
 
 void ComposerPanel::on_track_changed() {
+	imported_unsaved = false;
+	selection1 = selection2 = 0;
+	set_cursor_tick(0);
 	for (UndoBuffer<UndoNotes*>& i : composer_undo) {
 		i.clear(); // clear undo buffers.
 	}
@@ -105,21 +141,28 @@ void ComposerPanel::on_channel_changed() {
 	current_undo()->set_continuous(false);
 }
 
+void ComposerPanel::on_events_changed() {
+	imported_unsaved = true;
+	signal_content_changed.emit();
+}
+
 bool ComposerPanel::is_unsaved() {
 	bool saved = true;
 	for (UndoBuffer<UndoNotes*>& i : composer_undo) {
 		saved &= i.is_saved();
 	}
-	return saved;
+	return saved && !imported_unsaved;
 }
 
 void ComposerPanel::on_track_saved() {
+	imported_unsaved = false;
 	for (UndoBuffer<UndoNotes*>& i : composer_undo) {
 		i.set_saved();
 	}
 }
 
 void ComposerPanel::cut() {
+	if (!editing_allowed()) return;
 	if (selection_length() == 0) { return; }
 	copy();
 	erase_selection();
@@ -132,6 +175,7 @@ void ComposerPanel::copy() {
 	copy_buffer_length = selection_length();
 }
 void ComposerPanel::paste() {
+	if (!editing_allowed()) return;
 	if (copy_buffer.notes.empty()) { return; }
 	UndoSelection* new_undo = new UndoSelection(UndoCommand::Reason::PASTE_SELECTION,
 		UndoNotes::RedoCommand::WRITE_NEW | UndoNotes::RedoCommand::MAKE_NEW_GAP);
@@ -149,6 +193,8 @@ void ComposerPanel::paste() {
 }
 
 void ComposerPanel::erase_selection() {
+	if (!editing_allowed()) return;
+	if (get_arrangement_view()) { arrangement_view->erase_selected(); return; }
 	UndoSelection* new_undo = new UndoSelection(UndoCommand::Reason::ERASE_SELECTION,
 		UndoNotes::RedoCommand::ERASE_OLD_GAP);
 	new_undo->set_insert_mode(insert_mode);
@@ -160,6 +206,8 @@ void ComposerPanel::erase_selection() {
 	grid_panel->update_grid();
 }
 void ComposerPanel::move_selection_semitone(int pitch_offset) {
+	if (!editing_allowed()) return;
+	if (get_arrangement_view()) { arrangement_view->move_selected(0, pitch_offset); return; }
 	UndoNotes* new_undo = new UndoNotes(UndoCommand::Reason::MOVE_PITCH, UndoNotes::RedoCommand::WRITE_NEW);
 	new_undo->old_notes = current_channel->copy(selection_start(), selection_end());
 	if (selection_length() == 0 || new_undo->old_notes.notes.empty()) { return; }
@@ -171,6 +219,8 @@ void ComposerPanel::move_selection_semitone(int pitch_offset) {
 	grid_panel->update_grid();
 }
 void ComposerPanel::move_selection_tick(int tick_offset) {
+	if (!editing_allowed()) return;
+	if (get_arrangement_view()) { arrangement_view->move_selected(tick_offset, 0); return; }
 	if (selection_length() == 0) {
 		selection1 = max(0, selection1 + tick_offset); selection2 = selection1;
 		grid_panel->update_grid(); return;
@@ -199,6 +249,7 @@ void ComposerPanel::move_selection_tick(int tick_offset) {
 	grid_panel->update_grid();
 }
 void ComposerPanel::unselect() {
+	if (get_arrangement_view()) arrangement_view->clear_selection();
 	if (selection_length() == 0) {
 		selection1 = 0;
 	}
@@ -207,15 +258,18 @@ void ComposerPanel::unselect() {
 }
 
 void ComposerPanel::undo() {
+	if (!editing_allowed()) return;
 	current_undo()->undo();
 	grid_panel->update_grid();
 }
 void ComposerPanel::redo() {
+	if (!editing_allowed()) return;
 	current_undo()->redo();
 	grid_panel->update_grid();
 }
 
 void ComposerPanel::show_track_settings() {
+	if (!editing_allowed()) return;
 	track_settings.set_transient_for(*(app->get_run_window()));
 	track_settings.show();
 }
@@ -253,6 +307,7 @@ void ComposerPanel::on_vscroll() {
 }
 
 bool ComposerPanel::on_mouse_scroll(double x, double y) {
+	if (get_arrangement_view()) return false;
 	if (bool(scroll_controller->get_current_event_state() & Gdk::ModifierType::CONTROL_MASK)) {
 		double max_height = default_cell_size.y * pitch_range;
 		double max_zoom = max_height / double(grid_panel->get_height());
@@ -337,7 +392,9 @@ EventPopup::EventPopup() {
 }
 
 void EventPopup::popup(int at_tick) {
+	if (!ComposerPanel::editing_allowed()) return;
 	editing_tick = at_tick;
+	editing_channel = current_channel->channel_number;
 	update_event_field(tempo_field, current_track->get_last_tempo_event, float, to_string, 4);
 	update_event_field(instrument_field, current_channel->get_last_instrument_event, string, , 9);
 	update_event_field(pitch_field, current_channel->get_last_pitch_event, float, to_string, 4);
@@ -346,10 +403,19 @@ void EventPopup::popup(int at_tick) {
 }
 
 void EventPopup::on_closed() {
+	if (editing_channel < 0 || !ComposerPanel::editing_allowed()) { editing_channel = -1; return; }
+	Channel* channel = current_track->get_channel(editing_channel);
+	const auto old_tempo = current_track->tempo_events;
+	const auto old_instruments = channel->instrument_events;
+	const auto old_pitch = channel->pitch_events;
+	const auto old_volume = channel->volume_events;
 	current_track->set_tempo_event(editing_tick, get_float_from_string(tempo_field.get_text(), 0.0, 10.0));
-	current_channel->set_instrument_event(editing_tick, instrument_field.get_text());
-	current_channel->set_pitch_event(editing_tick, get_float_from_string(pitch_field.get_text(), 0.0, 2.0));
-	current_channel->set_volume_event(editing_tick, get_float_from_string(volume_field.get_text(), 0.0, 1.0));
+	channel->set_instrument_event(editing_tick, instrument_field.get_text());
+	channel->set_pitch_event(editing_tick, get_float_from_string(pitch_field.get_text(), 0.0, 2.0));
+	channel->set_volume_event(editing_tick, get_float_from_string(volume_field.get_text(), 0.0, 1.0));
+	editing_channel = -1;
+	if (old_tempo != current_track->tempo_events || old_instruments != channel->instrument_events ||
+		old_pitch != channel->pitch_events || old_volume != channel->volume_events) ComposerPanel::signal_events_changed.emit();
 	get_parent()->queue_draw();
 }
 
@@ -411,6 +477,7 @@ GridPanel::GridPanel() {
 }
 
 void GridPanel::on_lmb_down(int n_press, double x, double y) {
+	if (!ComposerPanel::editing_allowed()) return;
 	mouse_down_start = vec2(x + scroll_offset.x, y + scroll_offset.y);
 	ghost_note = make_unique<Note>(x / cell_size.x, y / cell_size.x, 1);
 	ghost_note->offset = mouse_down_start.x / cell_size.x;
@@ -428,6 +495,7 @@ void GridPanel::on_lmb_down(int n_press, double x, double y) {
 }
 
 void GridPanel::on_lmb_up(int n_press, double x, double y) {
+	if (!ComposerPanel::editing_allowed()) { ghost_note.reset(); return; }
 	if (ghost_note != nullptr) {
 		if (bool(lmb_gesture->get_current_event_state() & Gdk::ModifierType::SHIFT_MASK)) {
 			UndoNotes* undo = new UndoNotes(UndoNotes::Reason::ERASE_NOTE, UndoNotes::RedoCommand::ERASE_NEW);
@@ -466,6 +534,7 @@ void GridPanel::on_rmb_up(int n_press, double x, double y) {
 void GridPanel::on_mouse_motion(double x, double y) {
 	vec2 mouse_position = vec2(x + scroll_offset.x, y + scroll_offset.y);
 	if (lmb_gesture->get_current_button() == GDK_BUTTON_PRIMARY) {
+		if (!ghost_note || !ComposerPanel::editing_allowed()) return;
 		int start_offset = max(0, mouse_down_start.x / cell_size.x);
 		int end_offset = max(0, mouse_position.x / cell_size.x);
 		if (end_offset >= start_offset) {
@@ -493,6 +562,7 @@ void GridPanel::update_grid() {
 	hadjust->set_upper(current_track->get_tick_count() +
 		max(20, current_track->beats_per_measure * current_track->ticks_per_beat));
 	queue_draw();
+	ComposerPanel::signal_content_changed.emit();
 }
 
 void cairo_round_rect(const shared_ptr<Cairo::Context>& cr, int x, int y, int width, int height, int radius) {
@@ -755,19 +825,31 @@ void TrackSettings::on_track_changed() {
 }
 
 void TrackSettings::on_tempo_set() {
+	if (current_track->basic_tempo == tempo_spinner.get_value()) return;
+	if (!ComposerPanel::editing_allowed()) return;
 	current_track->basic_tempo = tempo_spinner.get_value();
+	ComposerPanel::signal_events_changed.emit();
 	signal_visible_change.emit();
 }
 void TrackSettings::on_beats_per_measure_set() {
+	if (current_track->beats_per_measure == beats_per_measure_spinner.get_value()) return;
+	if (!ComposerPanel::editing_allowed()) return;
 	current_track->beats_per_measure = beats_per_measure_spinner.get_value();
+	ComposerPanel::signal_events_changed.emit();
 	signal_visible_change.emit();
 }
 void TrackSettings::on_ticks_per_beat_set() {
+	if (current_track->ticks_per_beat == ticks_per_beat_spinner.get_value()) return;
+	if (!ComposerPanel::editing_allowed()) return;
 	current_track->ticks_per_beat = ticks_per_beat_spinner.get_value();
+	ComposerPanel::signal_events_changed.emit();
 	signal_visible_change.emit();
 }
 void TrackSettings::on_percussion_toggled() {
+	if (current_track->melodic_mode == !percussion_checkbox.get_active()) return;
+	if (!ComposerPanel::editing_allowed()) return;
 	current_track->melodic_mode = !percussion_checkbox.get_active();
+	ComposerPanel::signal_events_changed.emit();
 	signal_visible_change.emit();
 }
 

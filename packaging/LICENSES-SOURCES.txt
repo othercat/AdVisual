@@ -1,0 +1,43 @@
+AdVisual portable distribution
+=============================
+
+AdVisual source, including its build and packaging instructions:
+https://github.com/othercat/AdVisual
+The application's MIT license is included under share/licenses/AdVisual.
+
+The audio player and OPL emulation include code from AdPlug. AdPlug and
+libbinio use LGPL-2.1-or-later; Nuked OPL's source notices are preserved in
+AdPlug. These libraries remain separately replaceable dynamic libraries.
+The exact source commits for source-built libraries are recorded in
+share/advisual/dependency-sources.json. Complete source is available at the
+repository URLs and commits recorded there. The application source and build
+instructions allow rebuilding/relinking it with modified libraries.
+
+GTK, gtkmm, GLib, glibmm, Pango, pangomm, Cairo, cairomm, libsigc++, GdkPixbuf,
+librsvg, HarfBuzz and their dependencies are redistributed from Homebrew on
+macOS and MSYS2 UCRT64 on Windows. Their copied license notices are under
+share/licenses. THIRD-PARTY.json records the versions, licenses and source
+URLs for the actual runtime dependency closure. Upstream notices and license
+texts take precedence over this short description.
+
+Homebrew formula source recipes:
+https://github.com/Homebrew/homebrew-core
+https://formulae.brew.sh/
+MSYS2 package source recipes and source archives:
+https://github.com/msys2/MINGW-packages
+https://repo.msys2.org/mingw/sources/
+
+The package uses the operating system's installed fonts. No Apple or
+Microsoft font files are redistributed. Application SVGs also have generated
+PNG versions; the bundled SVG loader remains available to GTK. Its loader
+cache and the font configuration are materialized in the current user's
+cache directory at startup, using the current application location.
+
+No PAL game music, RIX, MKF, game bank or user settings files are included.
+advisual-check is a diagnostic tool that checks this package's resources,
+GTK schemas, image loaders and fonts without changing application settings.
+
+The macOS bundle has an ad-hoc integrity signature. Release signing and
+notarization require a distributor-owned Apple Developer identity and are
+not performed by this build. All included library signatures are renewed
+after their install names are changed for the portable bundle.
