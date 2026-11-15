@@ -4,4 +4,4 @@
 
 | 本地任务 | GitHub | 范围 | 状态 |
 | --- | --- | --- | --- |
-| [#2](issue-02-pal-rix-arrangement-release.md) | [othercat/AdVisual#1](https://github.com/othercat/AdVisual/issues/1) | PAL 全通道编辑与 Windows/macOS 发布 | 发布准备中 |
+| [#2](issue-02-pal-rix-arrangement-release.md) | [othercat/AdVisual#1](https://github.com/othercat/AdVisual/issues/1) | PAL 全通道编辑与 Windows/macOS 发布 | 已普通合入main、发布v1.1.0双平台；待用户跨设备验收 |

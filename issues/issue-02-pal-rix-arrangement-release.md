@@ -12,9 +12,9 @@
 
 发布验收：Windows 实际 CI 构建及可运行包、macOS 可移动 .app 与依赖闭包、Release 源码和校验文件。旧 AdVisual-local.app 依赖开发机环境，不作为公开发行物。
 
-实现提交：待记录。
-合并提交：待记录。
-Release：待记录。
+实现提交：dc95a6fff693dade1ef102a31388299ee6260c91。
+合并提交：main @ 958723e3579451b6077403923c47a8c8dcfc722b（普通merge；初次合并ab79bc3）。
+Release：https://github.com/othercat/AdVisual/releases/tag/v1.1.0（已正式发布，公开下载）。
 实机/听感验收：等待用户跨设备确认；Issue 保持开放。
 
 2026-11-16 发布准备验证：macOS package-portable/check-portable 通过；递归依赖闭包、ad-hoc 签名、带空格的新路径、清理 Homebrew/GTK 环境后的 28 PNG/SVG loader/schema/系统字体与真实程序初始化均通过。主机已用打包后的 .app 打开 MUSIC_36.RIX，实际确认原生文件选择器与 11 通道全局界面。Windows CI 构建与包运行待远端验证。
@@ -40,3 +40,14 @@ CI 43740119139：large-model确实应用，但 GCC16 的 ArrangementView.cpp 产
 二进制定位（CI 43741327642）：53个32位pseudo records均为依赖函数；唯一匹配错误地址低16位 AF45 的项target RVA=0xaf45、IAT RVA=0x18bad8，对应 CNemuopl::CNemuopl(int)，不是op_table。另有177个64位数据项。完整PE/符号与解析脚本保存在 process-root/staging/AdVisual-issue-2/github-43741327642/diagnostics 和 inspect-pe.py。固定AdPlug/libbinio顶层CMake会在BUILD_SHARED_LIBS且IPO变量未定义时自动开启IPO；显式OFF后没有后续目标覆盖。修复分支 richardli/fix/2-windows-dependency-exports：两依赖configure均显式IPO=OFF，CI检查真实命令无-flto、构造函数和readInt导入库均有T类型函数thunk；随后严格便携与真实启动检查。候选仍以实际WindowsCI为准，不把机制推断提前写作通过。
 
 CI 43742749690（main 30aac3420f3f453c47edc8e8f2d5ea87a9ff879a）双平台全部通过：两依赖无LTO、函数thunk类型、严格依赖闭包、GTK搬移probe、真实编辑器启动均通过。发行来源核对发现Windows原始Git状态为yes，可能由原生/MSYS Git的CRLF判定差异造成；包装元数据继续保留原始状态，另用真实 git diff --ignore-cr-at-eol HEAD 记录是否存在超出CRLF的源文件变化，不隐藏实质变更。本机从真实源快照创建Git fixture，原始状态yes/仅CRLF时新增字段no，追加实际内容后新增字段yes，资源打包均执行通过。后续main构建将验证最终源标识与实际包一致。
+
+## 最终交付（2026-11-16）
+
+版本 v1.1.0 tag 指向最终 main 合并节点 958723e3579451b6077403923c47a8c8dcfc722b。最终 CI https://github.com/othercat/AdVisual/actions/runs/43744086521 双平台全部通过：函数thunk/非LTO验证、依赖闭包、PNG/SVG/schema/font、带空格路径搬移和真实程序启动均通过。最终EXE解析：危险32bit函数pseudo relocation由53降为0，保留177项合法64bit。Win/Mac包与源码标识同提交；真实diff确认无超出CRLF的源文件改动，原始Git状态仍保留。
+Release已公开，3个ZIP+SHA256SUMS.txt均已核对GitHub服务端digest：
+- Windows x64：956ac077624c69626496b7b487d218f140a2cea4abe1e895ee9d365ae3793c24
+- macOS arm64：47939ff38ce39a46bf24f4876aefa703e7d79669716ccc45cac0695bb1569ccb
+- Source：25f751d9fc4f4442b73097dc2de35bcb2455272a5a144238d994c164a66e3f1c
+macOS要求Apple Silicon / 15+，已附依赖和ad-hoc签名，未做Developer ID/公证。Windows无需开发环境。无游戏RIX/MKF/WAV/MP3随包。
+源码与二进制副本、校验与服务端回执：delivery-root/artifacts/AdVisual-issue-2/github-v1.1.0。CI日志、PE验证与清理回执：process-root/artifacts/AdVisual-issue-2。所有5个本地开发/修复分支均通过远端main祖先检查，未合入rev-list为空；本地全部正常-d清理、唯一远端功能分支已删除，无worktree。原始提交均由main/tag恢复，未重写历史。
+听感与其他设备验收：待用户确认，GitHub #1保持开放；Windows CI验证进程启动和资源搬移，设备预听/交互仍需用户实机验收。
