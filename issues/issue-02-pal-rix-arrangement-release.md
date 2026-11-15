@@ -28,3 +28,5 @@ Release：待记录。
 - be22ad5ca1748b5fcd7c2eddb594cbd18e5f37eb：无 .git 源码包读取 SOURCE-COMMIT，真正解包源码的 GTK 资源打包通过。
 当前验证：https://github.com/othercat/AdVisual/actions/runs/43737773439。Windows 包与最终 main 构建验收中；发布后补全 merge SHA、Release 与服务端校验。
 本机证据：process-root/artifacts/AdVisual-issue-2；GitHub 记录见 Issue #1。
+
+CI 43737773439：Windows ZIP 与严格依赖闭包已成功生成，搬移检查的 plain dict 丢失 Windows 环境变量大小写查找语义，SystemRoot KeyError。已改为从原始 os.environ 取系统目录；实际搬移检查函数在模拟 Windows 大写键、可执行 probe fixture 下通过，同时复现旧 dict 失败。最终 main CI 将运行真实 Windows 便携包。

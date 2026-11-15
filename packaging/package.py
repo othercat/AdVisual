@@ -393,7 +393,7 @@ def check(args) -> None:
         env["XDG_CONFIG_HOME"] = str(directory / "settings")
         env["XDG_CACHE_HOME"] = str(directory / "cache")
         env["GSETTINGS_BACKEND"] = "memory"
-        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin" if mac else str(Path(env["SystemRoot"]) / "System32")
+        env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin" if mac else str(Path(os.environ["SystemRoot"]) / "System32")
         if mac:
             env["DYLD_PRINT_LIBRARIES"] = "1"
         else:
