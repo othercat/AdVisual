@@ -185,16 +185,19 @@ void CVisPlayer::refresh_voice_events(int v) {
 }
 //---------------------------------------------------------
 void CVisPlayer::enable_channel(int v) {
-	if (v >= get_channel_count()) {
+	if (v < 0 || v >= get_channel_count()) {
 		return;
 	}
 	note_off(v);
 	dynamic_notes[v] = -2;
 	refresh_voice_events(v);
+	if (const Note* note = track->get_channel(v)->get_note_on_tick(tick)) {
+		if (note->offset < int(tick)) note_on(v, 107 - note->pitch);
+	}
 }
 //---------------------------------------------------------
 void CVisPlayer::channel_play_note(int channel, int note_pitch, Instrument* instrument, float pitch_mult, float volume_mult) {
-	if (channel >= get_channel_count()) {
+	if (channel < 0 || channel >= get_channel_count()) {
 		cerr << "disable_channel_and_play_note() voice " << channel << " >= " << get_channel_count() << "\n";
 		return;
 	}
@@ -272,6 +275,10 @@ void CVisPlayer::update_voice(int v) {
 
 //---------------------------------------------------------
 bool CVisPlayer::update_track() {
+	if (tick >= track->get_tick_count()) {
+		disable_all_channels();
+		return false;
+	}
 	int tempo_tick;
 	float tempo_value;
 	track->get_last_tempo_event(tick, tempo_tick, tempo_value);
@@ -300,6 +307,11 @@ void CVisPlayer::rewind(int subsong) {
 	mNoteCache       = TUInt8Vector(kNumPercussiveVoices, 0);
 	mKOnOctFNumCache = TUInt8Vector(kNumMelodicVoices, 0);
 	mKeyOnCache      = TBoolVector(kNumPercussiveVoices, false);
+	mAMVibRhythmCache = 0;
+	mFNumFreqPtrList = TUint16PtrVector(kNumPercussiveVoices, skFNumNotes[0]);
+	mpOldFNumFreqPtr = nullptr;
+	mOldPitchBendLength = ~0;
+	mOldHalfToneOffset = 0;
 
 	opl->init();         // initialize to melodic by default
 

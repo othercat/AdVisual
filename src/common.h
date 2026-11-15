@@ -14,7 +14,7 @@ extern shared_ptr<Gtk::Application> app;
 extern shared_ptr<Gtk::Label> status;
 extern shared_ptr<Gio::SimpleActionGroup> common_action_group;
 
-#define ICON_PATH(file_name) (get_advisual_dir() + string("share/advisual/icons/") + string(file_name))
+#define ICON_PATH(file_name) get_icon_path(file_name)
 
 const int full_octave = 12;
 const int number_of_octaves = 8;
@@ -83,6 +83,7 @@ string note_number_to_letter(int note_number);
 bool is_note_flat(int note_number);
 float get_float_from_string(string str_val, float min = 0.0, float max = 1.0);
 string get_advisual_dir();
+string get_icon_path(const string& file_name);
 string get_config_dir();
 
 Gtk::ToggleButton create_image_button(string image_name, bool large_icon = true);

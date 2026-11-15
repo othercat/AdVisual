@@ -11,3 +11,7 @@ adplug/
 
 # Unsaved files in Midnight Commander.
 .#*
+# Local build, validation, and delivery outputs
+build/
+process-root/
+delivery-root/

@@ -1,0 +1,120 @@
+name: Build portable releases
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - richardli/feat/**
+      - richardli/fix/**
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install GTK and audio build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          brew install gtkmm4 adplug libbinio librsvg shared-mime-info
+      - name: Build, bundle and verify relocated application
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S . -B build/portable -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DBUILD_TESTING=OFF -DADVISUAL_PORTABLE=ON \
+            -DPython3_EXECUTABLE="$(command -v python3)"
+          cmake --build build/portable --target check-portable --parallel 3
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: AdVisual-v1.1.0-macos-arm64
+          path: |
+            build/portable/release/AdVisual-v1.1.0-macos-arm64.zip
+            build/portable/release/AdVisual-v1.1.0-macos-arm64.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Official setup-msys2 v2, pinned to the verified tag's commit.
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-gtkmm-4.0
+            mingw-w64-ucrt-x86_64-librsvg
+            mingw-w64-ucrt-x86_64-shared-mime-info
+      - name: Build pinned AdPlug and libbinio shared libraries
+        run: |
+          set -euo pipefail
+          mkdir -p build/_sources
+          while IFS=$'\t' read -r name repository revision; do
+            git init "build/_sources/$name"
+            git -C "build/_sources/$name" remote add origin "$repository"
+            git -C "build/_sources/$name" fetch --depth 1 origin "$revision"
+            git -C "build/_sources/$name" checkout --detach FETCH_HEAD
+          done < <(python - <<'PY'
+          import json
+          from pathlib import Path
+          for name, item in json.loads(Path('packaging/dependency-sources.json').read_text()).items():
+              print(name, item['repository'], item['commit'], sep='\t')
+          PY
+          )
+          deps_prefix="$(cygpath -m "$PWD/build/deps")"
+          cmake -S build/_sources/libbinio -B build/libbinio -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps_prefix" \
+            -DBUILD_SHARED_LIBS=ON -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON
+          cmake --build build/libbinio --target install --parallel 3
+          cmake -S build/_sources/adplug -B build/adplug -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$deps_prefix" \
+            -DCMAKE_PREFIX_PATH="$deps_prefix" -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON -DADPLUG_PRECOMPILED_HEADERS=OFF \
+            -Dadplug_INCLUDE_TEST=OFF
+          cmake --build build/adplug --target install --parallel 3
+      - name: Build PAL editor and package its complete Windows runtime
+        run: |
+          set -euo pipefail
+          deps_prefix="$(cygpath -m "$PWD/build/deps")"
+          cmake -S . -B build/portable -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF -DADVISUAL_PORTABLE=ON \
+            -DCMAKE_PREFIX_PATH="$deps_prefix" \
+            -DADVISUAL_RUNTIME_PREFIX="$(cygpath -m "$MINGW_PREFIX")" \
+            -DADVISUAL_DEPENDENCY_SOURCE="$(cygpath -m "$PWD/build/_sources")" \
+            -DADVISUAL_DLL_DIRECTORIES="$deps_prefix/bin;$deps_prefix/lib" \
+            -DPython3_EXECUTABLE="$(cygpath -m "$(command -v python)")"
+          cmake --build build/portable --target check-portable --parallel 3
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: AdVisual-v1.1.0-windows-x64
+          path: |
+            build/portable/release/AdVisual-v1.1.0-windows-x64.zip
+            build/portable/release/AdVisual-v1.1.0-windows-x64.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

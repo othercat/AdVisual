@@ -6,6 +6,7 @@
 using namespace std;
 
 struct UndoCommand {
+	virtual ~UndoCommand() = default;
 	enum Reason {
 		TYPE_INVALID,
 		REASON_INVALID,
@@ -74,7 +75,7 @@ public:
 	}
 	UndoBuffer(const UndoBuffer& other) : msize(other.msize), mcapacity(other.mcapacity) {
 		data = allocator_type().allocate(mcapacity);
-		copy(other.data, other.data + size, data);
+		copy(other.data, other.data + other.msize, data);
 	}
 	~UndoBuffer() {
 		allocator_type().deallocate(data, mcapacity);

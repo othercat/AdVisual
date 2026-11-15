@@ -6,6 +6,8 @@
 #include <adplug/nemuopl.h> // Nuked OPL.
 #include <string>
 #include <memory>
+#include <atomic>
+#include <mutex>
 #include <Instrument.h>
 #include <VisPlayer.h>
 
@@ -25,11 +27,19 @@ public:
 	bool get_channel_enable(int channel) const { return enabled_channels[channel]; }
 	bool is_playing() const { return playing_song; }
 protected:
-	long towrite;
-	ma_device mini_device;
+	bool poll_playback();
+	void apply_channel_states();
+	long towrite = 0;
+	double tick_fraction = 0;
+	ma_device mini_device{};
 	unique_ptr<CVisPlayer> opl_playback;
 	unique_ptr<Copl> opl_device;
-	bool stereo = false, looping = false, active = false, playing_song = false;
+	std::atomic<bool> looping{false}, active{false}, playing_song{false}, finished{false};
+	std::atomic<int> playback_tick{0};
+	std::mutex playback_mutex;
+	sigc::connection playback_timer;
+	bool device_initialized = false;
+	int range_start = 0, range_end = 0;
 	int adplug_process(short* p_buffer, unsigned int p_frames, unsigned int p_buffer_offset);
 	friend class ma_device;
 };

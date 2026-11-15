@@ -1,0 +1,12 @@
+{
+  "adplug": {
+    "repository": "https://github.com/adplug/adplug",
+    "commit": "3d9457ac91121302a752577b2bf063b4aea202b8",
+    "license": "LGPL-2.1-or-later"
+  },
+  "libbinio": {
+    "repository": "https://github.com/adplug/libbinio",
+    "commit": "3baed731da6b44883c6820132fb1d2a44abc0939",
+    "license": "LGPL-2.1-or-later"
+  }
+}

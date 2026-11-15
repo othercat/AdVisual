@@ -117,8 +117,7 @@ void Bank::bnk_move_fields() {
 	fieldcpy_uint8(&file_version_minor, 1);
 	DBPRINT("File version " << int(file_version_major) << "." << int(file_version_minor) << "\n");
 	char signature[6] = {'A', 'D', 'L', 'I', 'B', '-'}; // Not null terminated!
-	//fieldcpy_char(&signature[0], 5); // Simply says "ADLIB-"
-	fieldzero(6); // Signature.
+	fieldcpy_char(&signature[0], 6);
 	uint16_t byte_size_of_instrument_name = 12;
 	uint16_t byte_size_of_instrument_data = 17;
 	uint16_t num_of_ins_used = instruments.size();
