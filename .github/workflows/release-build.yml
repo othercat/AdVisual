@@ -7,6 +7,10 @@ on:
       - main
       - richardli/feat/**
       - richardli/fix/**
+    paths-ignore:
+      - issues/**
+      - docs/**
+      - README.md
 
 permissions:
   contents: read
