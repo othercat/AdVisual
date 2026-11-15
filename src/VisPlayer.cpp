@@ -37,6 +37,9 @@ static int16_t  const skNrStepPitch          = 25; // 25 steps within a half-ton
 static uint8_t  const skMaxNotes             = 96U;
 static uint8_t  const skCarrierOpOffset      = 3U;
 static uint8_t  const skNumSemitonesInOctave = 12U;
+// OPL2 channel-to-modulator offsets, identical to AdPlug's CPlayer::op_table.
+// Keep this hardware mapping local instead of importing DLL static data.
+static constexpr uint8_t skMelodicOpOffsets[9] = {0x00, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x10, 0x11, 0x12};
 //---------------------------------------------------------
 static uint8_t const skOPL2_WaveCtrlBaseAddress      = 0x01U; // Test LSI / Enable waveform control
 static uint8_t const skOPL2_AaMultiBaseAddress       = 0x20U; // Amp Mod / Vibrato / EG type / Key Scaling / Multiple
@@ -488,7 +491,7 @@ void CVisPlayer::set_volume(int const voice, const uint8_t volume) {
 		DBPRINT("COMPOSER: set_volume() !mRhythmMode voice " << voice << " >= " << kNumMelodicVoices);
 		return;
 	}
-	uint8_t const op_offset = (voice < kSnareDrumChannel || !mRhythmMode) ? op_table[voice] + skCarrierOpOffset : drum_op_table[voice - kSnareDrumChannel];
+	uint8_t const op_offset = (voice < kSnareDrumChannel || !mRhythmMode) ? skMelodicOpOffsets[voice] + skCarrierOpOffset : drum_op_table[voice - kSnareDrumChannel];
 	mVolumeCache[voice] = volume;
 	opl->write(skOPL2_KSLTLBaseAddress + op_offset, get_ksltl(voice, volume, 0));
 }
@@ -504,7 +507,7 @@ void CVisPlayer::set_instrument(const int voice, const Instrument* instrument) {
 			DBPRINT("COMPOSER: set_instrument() !mRhythmMode voice " << voice << " >= " << kNumMelodicVoices);
 			return;
 		}
-		uint8_t const op_offset = op_table[voice];
+		uint8_t const op_offset = skMelodicOpOffsets[voice];
 
 		opl->write(skOPL2_AaMultiBaseAddress  + op_offset, m.reg20());
 		opl->write(skOPL2_KSLTLBaseAddress    + op_offset, m.reg40());

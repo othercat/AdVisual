@@ -77,12 +77,6 @@ function(advisual_build_settings target)
             "$<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.>"
             "$<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_CURRENT_BINARY_DIR}=build>")
     endif()
-    if(MINGW AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64)$")
-        # AdPlug/libbinio DLL data lacks dllimport annotations; distant PE images
-        # require full-width references rather than 32-bit pseudo relocations.
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:-mcmodel=large>")
-        target_link_options(${target} PRIVATE -mcmodel=large)
-    endif()
 endfunction()
 advisual_build_settings(advisual)
 # Development binaries use the same relative resource layout as portable releases.

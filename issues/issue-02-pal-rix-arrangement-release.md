@@ -34,3 +34,5 @@ CI 43737773439：Windows ZIP 与严格依赖闭包已成功生成，搬移检查
 ## main 发布启动修复
 
 普通 merge：ab79bc3e5b6a596f4792b0b34f15a9ee9c2e30bb。CI 43738787645 的 macOS 包通过，Windows 严格闭包、ZIP 和实际 GTK 搬移 probe（28PNG/SVG/schema/font）通过；真实 advisual.exe 启动遇到32位 MinGW pseudo relocation越界。创建 main 基线修复分支 richardli/fix/2-windows-dll-relocations；MinGW x64 的 C/CXX 与链接启用 large code model，保留 ASLR/DEP。生成器验证x64 C/CXX/link均带flag、RC/x86无；Mac配置及真实目标构建通过。机制符合 GCC/ld 官方文档，但不把推断的具体外部符号当作已定位事实。最终实际Windows启动由后续main CI验证，新增失败二进制/PE/符号/构建命令诊断附件。证据：process-root/artifacts/AdVisual-issue-2/large-model。
+
+CI 43740119139：large-model确实应用，但 GCC16 的 ArrangementView.cpp 产生未定义 _GLOBAL_OFFSET_TABLE_，候选未通过、未发布。修复分支 richardli/fix/2-windows-opl-data-import 改用局部方案：移除large-model 6行，VisPlayer两处 CPlayer::op_table 改为本地constexpr硬件映射。与固定AdPlug commit 3d9457ac91121302a752577b2bf063b4aea202b8 的 src/player.cpp 逐项一致：[0,1,2,8,9,10,16,17,18]。其它打击乐/音符/频率表已有本地static定义；binio只用枚举/类型。本机真实构建通过，nm显示 CPlayer::op_table 未定义导入已消失，剩余 CPlayer RTTI 不作为已定位故障符号陈述。最终Windows实际启动由后续main CI验证。失败诊断保留于 process-root/staging/AdVisual-issue-2/github-43740119139/diagnostics。
