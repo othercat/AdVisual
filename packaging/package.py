@@ -336,7 +336,8 @@ def windows(args) -> None:
     search = [args.prefix / "bin"] + args.dll_directory
     available = {path.name.lower(): path for directory in search for path in directory.glob("*.dll")}
     system = Path(os.environ["SystemRoot"]) / "System32"
-    system_names = {path.name.lower() for path in system.glob("*.dll")}
+    # PE imports can name system modules such as WINSPOOL.DRV as well as DLLs.
+    system_names = {path.name.lower() for path in system.iterdir() if path.is_file()}
     sources: dict[Path, Path] = {}
 
     def collect(source: Path, destination: Path | None = None) -> None:
